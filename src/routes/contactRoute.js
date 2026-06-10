@@ -1,6 +1,6 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
-import { sendContactEmail } from "../email/emailfunction/sendContactEmail.js";
+import { sendContactEmail } from "../email/emailFunction/sendContactEmail.js";
 
 const router = express.Router();
 
