@@ -7,7 +7,7 @@ import { transporter } from "../../config/transporter.js";
 const compileTemplate = (fileName, data) => {
   const filePath = path.join(
     process.cwd(),
-    "src/email/emailtemplate",
+    "src/email/emailTemplate",
     fileName
   );
 
