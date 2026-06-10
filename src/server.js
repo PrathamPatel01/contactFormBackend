@@ -1,12 +1,8 @@
-import "./config/env.js"; 
-
+import "./config/env.js";
 
 import express from "express";
 import cors from "cors";
-
 import contactRoute from "./routes/contactRoute.js";
-
-
 
 const app = express();
 
@@ -17,7 +13,7 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 /**
- * Debug ENV (remove in production later)
+ * Debug ENV (remove later in production)
  */
 console.log("🔥 ENV CHECK:");
 console.log("EMAIL_USER =", process.env.EMAIL_USER ? "LOADED" : "MISSING");
@@ -29,7 +25,7 @@ console.log("EMAIL_PASS =", process.env.EMAIL_PASS ? "LOADED" : "MISSING");
 app.use("/contact", contactRoute);
 
 /**
- * Health check route (for deployment + monitoring)
+ * Health check
  */
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -40,22 +36,13 @@ app.get("/health", (req, res) => {
 });
 
 /**
- * 404 fallback (important for APIs)
+ * 404 fallback
  */
 app.use((req, res) => {
-  res.status(404).json({
-    error: "Route not found",
-  });
+  res.status(404).json({ error: "Route not found" });
 });
 
 /**
- * Start server
+ * IMPORTANT: NO app.listen() on Vercel
  */
-const PORT = process.env.PORT || 3001;
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
-
-
 export default app;
