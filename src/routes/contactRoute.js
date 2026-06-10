@@ -10,6 +10,17 @@ const contactLimiter = rateLimit({
   max: 5,
 });
 
+const isValidEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const isValidName = (name) => {
+  // only letters + spaces allowed
+  const nameRegex = /^[a-zA-Z\s]+$/;
+  return nameRegex.test(name);
+};
+
 // email cooldown store
 const emailCooldown = new Map();
 
@@ -36,6 +47,29 @@ router.post("/", contactLimiter, async (req, res) => {
     if (!name || !email || !message) {
       return res.status(400).json({ error: "Missing fields" });
     }
+       // name validation
+    if (name.length > 30) {
+      return res.status(400).json({ error: "Name too long (max 30 chars)" });
+    }
+
+    if (!isValidName(name)) {
+      return res.status(400).json({
+        error: "Name can only contain letters and spaces",
+      });
+    }
+
+    // email validation
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+
+    // message validation
+    if (message.length > 300) {
+      return res.status(400).json({
+        error: "Message too long (max 300 characters)",
+      });
+    }
+
 
     if (isEmailOnCooldown(email)) {
       return res.status(429).json({
