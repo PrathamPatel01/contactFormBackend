@@ -16,11 +16,9 @@ const isValidEmail = (email) => {
 };
 
 const isValidName = (name) => {
-  // only letters + spaces allowed
-  const nameRegex = /^[a-zA-Z\s]+$/;
-  return nameRegex.test(name);
+  const nameRegex = /^(?!.*([A-Za-z])\1{3})[A-Za-z]+(?: [A-Za-z]+)*$/;
+  return nameRegex.test(name.trim());
 };
-
 // email cooldown store
 const emailCooldown = new Map();
 
