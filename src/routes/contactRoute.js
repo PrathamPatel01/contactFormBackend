@@ -1,15 +1,117 @@
+// import express from "express";
+// import rateLimit from "express-rate-limit";
+// import { sendContactEmail } from "../email/emailFunction/sendContactEmail.js";
+
+// const router = express.Router();
+
+// // IP rate limiter
+// const contactLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 5,
+// });
+
+// const isValidEmail = (email) => {
+//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//   return emailRegex.test(email);
+// };
+
+// const isValidName = (name) => {
+//   const nameRegex = /^(?!.*([A-Za-z])\1{3})[A-Za-z]+(?: [A-Za-z]+)*$/;
+//   return nameRegex.test(name.trim());
+// };
+// // email cooldown store
+// const emailCooldown = new Map();
+
+// const isEmailOnCooldown = (email) => {
+//   const last = emailCooldown.get(email);
+//   if (!last) return false;
+
+//   const now = Date.now();
+//   const cooldown = 2 * 60 * 1000; // 2 min
+
+//   return now - last < cooldown;
+// };
+
+// const markEmail = (email) => {
+//   emailCooldown.set(email, Date.now());
+// };
+
+// router.post("/", contactLimiter, async (req, res) => {
+//   console.log("🔥 CONTACT ROUTE HIT");
+
+//   try {
+//     const { name, email, message } = req.body;
+
+//     if (!name || !email || !message) {
+//       return res.status(400).json({ error: "Missing fields" });
+//     }
+//        // name validation
+//     if (name.length > 30) {
+//       return res.status(400).json({ error: "Name too long (max 30 chars)" });
+//     }
+
+//     if (!isValidName(name)) {
+//       return res.status(400).json({
+//         error: "Name can only contain letters and spaces",
+//       });
+//     }
+
+//     // email validation
+//     if (!isValidEmail(email)) {
+//       return res.status(400).json({ error: "Invalid email format" });
+//     }
+
+//     // message validation
+//     if (message.length > 300) {
+//       return res.status(400).json({
+//         error: "Message too long (max 300 characters)",
+//       });
+//     }
+
+
+//     if (isEmailOnCooldown(email)) {
+//       return res.status(429).json({
+//         error: "Please wait before sending another message.",
+//       });
+//     }
+
+//     await sendContactEmail({ name, email, message });
+
+//     markEmail(email);
+
+//     return res.json({ success: true });
+//   }catch (err) {
+//   console.error("❌ EMAIL ERROR FULL:", err);
+//   return res.status(500).json({
+//     error: err.message || "Email failed",
+//   });
+// }
+// });
+
+// export default router;
+
 import express from "express";
 import rateLimit from "express-rate-limit";
 import { sendContactEmail } from "../email/emailFunction/sendContactEmail.js";
 
 const router = express.Router();
 
-// IP rate limiter
+/* ----------------------------
+   Rate Limiter
+----------------------------- */
 const contactLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 mins
   max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many requests. Please try again later.",
+  },
 });
 
+/* ----------------------------
+   Validation Helpers
+----------------------------- */
 const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
@@ -19,35 +121,54 @@ const isValidName = (name) => {
   const nameRegex = /^(?!.*([A-Za-z])\1{3})[A-Za-z]+(?: [A-Za-z]+)*$/;
   return nameRegex.test(name.trim());
 };
-// email cooldown store
+
+/* ----------------------------
+   Cooldown Store
+----------------------------- */
 const emailCooldown = new Map();
+const pendingEmails = new Set();
+
+const COOLDOWN_TIME = 2 * 60 * 1000; // 2 minutes
 
 const isEmailOnCooldown = (email) => {
-  const last = emailCooldown.get(email);
-  if (!last) return false;
+  const lastSent = emailCooldown.get(email);
 
-  const now = Date.now();
-  const cooldown = 2 * 60 * 1000; // 2 min
+  if (!lastSent) {
+    return false;
+  }
 
-  return now - last < cooldown;
+  return Date.now() - lastSent < COOLDOWN_TIME;
 };
 
 const markEmail = (email) => {
   emailCooldown.set(email, Date.now());
 };
 
+/* ----------------------------
+   Contact Route
+----------------------------- */
 router.post("/", contactLimiter, async (req, res) => {
   console.log("🔥 CONTACT ROUTE HIT");
 
   try {
     const { name, email, message } = req.body;
 
+    /* ----------------------------
+       Required Fields
+    ----------------------------- */
     if (!name || !email || !message) {
-      return res.status(400).json({ error: "Missing fields" });
+      return res.status(400).json({
+        error: "Missing required fields",
+      });
     }
-       // name validation
+
+    /* ----------------------------
+       Name Validation
+    ----------------------------- */
     if (name.length > 30) {
-      return res.status(400).json({ error: "Name too long (max 30 chars)" });
+      return res.status(400).json({
+        error: "Name too long (max 30 characters)",
+      });
     }
 
     if (!isValidName(name)) {
@@ -56,36 +177,67 @@ router.post("/", contactLimiter, async (req, res) => {
       });
     }
 
-    // email validation
+    /* ----------------------------
+       Email Validation
+    ----------------------------- */
     if (!isValidEmail(email)) {
-      return res.status(400).json({ error: "Invalid email format" });
+      return res.status(400).json({
+        error: "Invalid email format",
+      });
     }
 
-    // message validation
+    /* ----------------------------
+       Message Validation
+    ----------------------------- */
     if (message.length > 300) {
       return res.status(400).json({
         error: "Message too long (max 300 characters)",
       });
     }
 
+    /* ----------------------------
+       Prevent Parallel Spam
+    ----------------------------- */
+    if (pendingEmails.has(email)) {
+      return res.status(429).json({
+        error: "Request already in progress",
+      });
+    }
 
+    /* ----------------------------
+       Cooldown Check
+    ----------------------------- */
     if (isEmailOnCooldown(email)) {
       return res.status(429).json({
         error: "Please wait before sending another message.",
       });
     }
 
-    await sendContactEmail({ name, email, message });
+    pendingEmails.add(email);
 
-    markEmail(email);
+    try {
+      await sendContactEmail({
+        name,
+        email,
+        message,
+      });
 
-    return res.json({ success: true });
-  }catch (err) {
-  console.error("❌ EMAIL ERROR FULL:", err);
-  return res.status(500).json({
-    error: err.message || "Email failed",
-  });
-}
+      markEmail(email);
+
+      return res.status(200).json({
+        success: true,
+        message: "Message sent successfully",
+      });
+    } finally {
+      pendingEmails.delete(email);
+    }
+  } catch (err) {
+    console.error("❌ EMAIL ERROR FULL:", err);
+
+    return res.status(500).json({
+      error: err.message || "Email failed",
+    });
+  }
 });
 
 export default router;
